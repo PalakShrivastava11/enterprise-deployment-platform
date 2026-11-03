@@ -30,5 +30,14 @@ jobs:
             pip install -r requirements.txt
             sudo systemctl restart gunicorn
             sudo systemctl is-active --quiet gunicorn
-            curl --fail --silent http://127.0.0.1/ > /dev/null
-            echo "Deployment successful"
+            for i in {1..10}; do
+              if curl --fail --silent http://127.0.0.1/ > /dev/null; then
+                echo "Deployment successful"
+                exit 0
+              fi
+              echo "Waiting for application..."
+              sleep 5
+            done
+
+            echo "Deployment health check failed"
+            exit 1
