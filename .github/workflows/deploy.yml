@@ -1,5 +1,5 @@
 
-name: Deploy to EC2
+name: Docker CI/CD to EC2
 
 on:
   workflow_run:
@@ -11,12 +11,40 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  build-and-push:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy application to EC2
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}
+            palaks11/enterprise-deployment-platform-repo:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy Docker container to EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -24,20 +52,43 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-            cd /home/ec2-user/enterprise-deployment-platform
-            git pull origin main
-            source .venv/bin/activate
-            pip install -r requirements.txt
-            sudo systemctl restart gunicorn
-            sudo systemctl is-active --quiet gunicorn
+
+            IMAGE="palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}"
+
+            echo "Pulling latest Docker image..."
+            sudo docker pull "$IMAGE"
+
+            echo "Stopping old Gunicorn service..."
+            sudo systemctl stop gunicorn
+
+            echo "Removing old Docker container if present..."
+            sudo docker rm -f enterprise-app 2>/dev/null || true
+
+            echo "Starting new Docker container..."
+            if ! sudo docker run -d \
+              --name enterprise-app \
+              --restart unless-stopped \
+              -p 127.0.0.1:8000:8000 \
+              "$IMAGE"; then
+
+              echo "Docker container failed to start. Restoring old Gunicorn service..."
+              sudo systemctl start gunicorn
+              exit 1
+            fi
+
+            echo "Checking application health..."
             for i in {1..10}; do
               if curl --fail --silent http://127.0.0.1/ > /dev/null; then
-                echo "Deployment successful"
+                echo "Docker deployment successful!"
+                sudo systemctl disable gunicorn
                 exit 0
               fi
+
               echo "Waiting for application..."
               sleep 5
             done
 
-            echo "Deployment health check failed"
+            echo "Health check failed. Restoring old Gunicorn service..."
+            sudo docker rm -f enterprise-app || true
+            sudo systemctl start gunicorn
             exit 1
