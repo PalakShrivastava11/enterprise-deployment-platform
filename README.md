@@ -8,16 +8,12 @@ The goal is to build a practical, end-to-end DevOps deployment workflow with sec
 
 ```mermaid
 flowchart LR
-    A["GitHub Repository"] --> B["GitHub Actions: CI"]
-    B --> C["Build & Push Docker Image"]
-    C --> D["Docker Hub"]
-    B --> E["GitHub Actions: CD"]
-    E --> F["AWS OIDC + SSM"]
-    D --> G["AWS EC2"]
-    F --> G
-    G --> H["Docker Container"]
-    H --> I["Nginx"]
-    I --> J["Live Application"]
-```
+    A["GitHub<br/>Source Code"] --> B["GitHub Actions<br/>CI: Test Application"]
+    B --> C["Docker Hub<br/>Build & Store Image"]
+    C --> D["GitHub Actions<br/>CD: Deploy"]
+    D --> E["AWS OIDC + SSM"]
+    E --> F["AWS EC2<br/>Docker Container"]
+    F --> G["Nginx"]
+    G --> H["Live Application"]
 
 
