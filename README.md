@@ -4,3 +4,20 @@ An automated application deployment platform built using Python, Docker, GitHub 
 The goal is to build a practical, end-to-end DevOps deployment workflow with secure cloud authentication, automated deployments, rollback and infrastructure automation.
 
 
+## Architecture
+
+```mermaid
+flowchart LR
+    A["GitHub Repository"] --> B["GitHub Actions: CI"]
+    B --> C["Build & Push Docker Image"]
+    C --> D["Docker Hub"]
+    B --> E["GitHub Actions: CD"]
+    E --> F["AWS OIDC + SSM"]
+    D --> G["AWS EC2"]
+    F --> G
+    G --> H["Docker Container"]
+    H --> I["Nginx"]
+    I --> J["Live Application"]
+```
+
+
