@@ -13,6 +13,7 @@ flowchart LR
     E --> F["AWS EC2<br/>Docker Container"]
     F --> G["Nginx"]
     G --> H["Live Application"]
+```
 
 ## Technology Stack
 
@@ -30,16 +31,6 @@ flowchart LR
 | Nginx | Reverse proxy |
 | Gunicorn | Python application server |
 
-## Implemented Features
-
-- Developed a Python Flask application.
-- Automated application testing using GitHub Actions.
-- Containerized the application using Docker.
-- Automated Docker image building and publishing to Docker Hub.
-- Deployed the application on AWS EC2.
-- Implemented automated deployment using GitHub Actions and AWS Systems Manager.
-- Configured secure AWS authentication using GitHub Actions OIDC.
-- Configured Nginx as a reverse proxy.
 
 ## Deployment Workflow
 
