@@ -15,7 +15,7 @@ flowchart LR
     G --> H["Live Application"]
 ```
 
-## Technology Stack
+## Tech Stack
 
 | Technology | Purpose |
 |---|---|
