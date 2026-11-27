@@ -1,7 +1,5 @@
 # enterprise-deployment-platform
-An automated application deployment platform built using Python, Docker, GitHub Actions and AWS. The project implements a CI/CD pipeline that tests application code, builds and publishes Docker images, and deploys the application to an AWS EC2 instance through AWS Systems Manager (SSM).
-
-The goal is to build a practical, end-to-end DevOps deployment workflow with secure cloud authentication, automated deployments, rollback and infrastructure automation.
+An automated application deployment platform that automates the process of testing, packaging, and releasing an application to a live environment. Provides end-to-end DevOps deployment workflow with secure cloud authentication, automated deployments, rollback and infrastructure automation. Built using Python, Docker, GitHub Actions and AWS.
 
 
 ## Architecture
@@ -15,5 +13,52 @@ flowchart LR
     E --> F["AWS EC2<br/>Docker Container"]
     F --> G["Nginx"]
     G --> H["Live Application"]
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Python (Flask) | Application development |
+| Pytest | Application testing |
+| Git & GitHub | Version control |
+| GitHub Actions | CI/CD automation |
+| Docker | Application containerization |
+| Docker Hub | Docker image storage |
+| AWS EC2 | Application hosting |
+| AWS Systems Manager (SSM) | Remote deployment execution |
+| AWS IAM & OIDC | Secure AWS authentication |
+| Nginx | Reverse proxy |
+| Gunicorn | Python application server |
+
+## Implemented Features
+
+- Developed a Python Flask application.
+- Automated application testing using GitHub Actions.
+- Containerized the application using Docker.
+- Automated Docker image building and publishing to Docker Hub.
+- Deployed the application on AWS EC2.
+- Implemented automated deployment using GitHub Actions and AWS Systems Manager.
+- Configured secure AWS authentication using GitHub Actions OIDC.
+- Configured Nginx as a reverse proxy.
+
+## Deployment Workflow
+
+1. Code changes are pushed to the GitHub repository.
+2. GitHub Actions runs application validation and tests.
+3. On successful CI, a Docker image is built and pushed to Docker Hub.
+4. GitHub Actions authenticates with AWS using OIDC.
+5. AWS Systems Manager sends deployment commands to EC2.
+6. EC2 pulls the Docker image and starts the application container.
+7. Nginx forwards incoming requests to the application.
+
+## Future Enhancements
+
+- **Automated Rollback:** Restore the previous working version if a deployment fails.
+- **Infrastructure as Code (Terraform):** Automate AWS infrastructure provisioning.
+- **Monitoring and Logging:** Improve application health monitoring and deployment visibility.
+
+## Project Status
+
+CI/CD pipeline and Docker-based deployment are implemented and working. Automated rollback and Terraform-based infrastructure provisioning are planned.
 
 
