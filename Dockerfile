@@ -21,6 +21,9 @@ RUN python -m pip install --no-cache-dir --upgrade \
 # Verify setuptools version
 RUN python -c "import setuptools; print('setuptools version:', setuptools.__version__)"
 
+# Remove outdated embedded pip SBOM metadata
+RUN rm -f /usr/local/lib/python3.13/site-packages/pip/_vendor/bom.cdx.json
+
 COPY . .
 
 EXPOSE 8000
