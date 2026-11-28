@@ -11,12 +11,15 @@ RUN apt-get update && \
 # Copy application dependencies
 COPY requirements.txt .
 
-# Upgrade Python packaging tools and vulnerable packages
+# Install application dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Upgrade Python packaging tools
 RUN python -m pip install --no-cache-dir --upgrade \
     pip setuptools wheel jaraco.context
 
-# Install application dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Verify setuptools version
+RUN python -c "import setuptools; print('setuptools version:', setuptools.__version__)"
 
 COPY . .
 
