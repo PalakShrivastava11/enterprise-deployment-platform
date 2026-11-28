@@ -26,8 +26,9 @@ jobs:
           docker build \
             -t palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }} \
             -t palaks11/enterprise-deployment-platform-repo:latest \
+            .
 
-            - name: Inspect pip embedded SBOM
+      - name: Inspect pip embedded SBOM
         run: |
           IMAGE="palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}"
           docker run --rm --entrypoint sh "$IMAGE" -c \
@@ -51,9 +52,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push Docker image to Docker Hub
+      - name: Push Docker image with commit SHA
         run: |
           docker push palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}
+
+      - name: Push latest Docker image
+        run: |
           docker push palaks11/enterprise-deployment-platform-repo:latest
 
   deploy:
@@ -61,129 +65,78 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
       id-token: write
+      contents: read
 
     steps:
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ap-south-1
 
-      - name: Send deployment command through SSM
-        id: send-command
-        env:
-          IMAGE: palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}
-          INSTANCE_ID: i-095ce9e285493d318
+      - name: Deploy application using SSM
         run: |
-          python - <<'PY'
-          import json
-          import os
-
-          image = os.environ["IMAGE"]
-          instance_id = os.environ["INSTANCE_ID"]
-
-          commands = [
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
               "set -e",
-              f"IMAGE='{image}'",
-              "STATE_FILE='/var/lib/enterprise-app/last-good-image'",
-              "mkdir -p /var/lib/enterprise-app",
-              "echo 'Identifying previous working image...'",
-              "PREVIOUS_IMAGE=$(docker inspect --format='{{.Config.Image}}' enterprise-app 2>/dev/null || cat \"$STATE_FILE\" 2>/dev/null || true)",
-              "if [ -n \"$PREVIOUS_IMAGE\" ]; then printf '%s\\n' \"$PREVIOUS_IMAGE\" > \"$STATE_FILE\"; fi",
-              "echo 'Pulling new Docker image...'",
-              "docker pull \"$IMAGE\"",
-              "echo 'Stopping old Gunicorn service...'",
-              "systemctl stop gunicorn",
-              "echo 'Removing previous container...'",
-              "docker rm -f enterprise-app 2>/dev/null || true",
-              "echo 'Starting new Docker container...'",
-              "if ! docker run -d --name enterprise-app --restart unless-stopped -p 127.0.0.1:8000:8000 \"$IMAGE\"; then echo 'New container failed to start'; fi",
-              "echo 'Checking application health...'",
-              "for i in $(seq 1 10); do",
-              "  if curl --fail --silent http://127.0.0.1/ > /dev/null; then",
-              "    echo 'New Docker deployment successful!'",
-              "    printf '%s\\n' \"$IMAGE\" > \"$STATE_FILE\"",
-              "    systemctl disable gunicorn",
-              "    exit 0",
-              "  fi",
-              "  echo 'Waiting for application...'",
-              "  sleep 5",
-              "done",
-              "echo 'New deployment failed. Starting rollback...'",
-              "docker rm -f enterprise-app 2>/dev/null || true",
+              "IMAGE=palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}",
+              "sudo docker pull $IMAGE",
+              "PREVIOUS_IMAGE=$(sudo docker inspect enterprise-app --format='\''{{.Config.Image}}'\'' 2>/dev/null || cat /var/lib/enterprise-app/last-good-image 2>/dev/null || true)",
+              "sudo systemctl stop gunicorn || true",
+              "sudo docker rm -f enterprise-app || true",
+              "sudo docker run -d --name enterprise-app --restart unless-stopped -p 127.0.0.1:8000:8000 $IMAGE",
+              "sleep 5",
+              "if curl --fail --silent http://127.0.0.1/; then",
+              "  echo $IMAGE | sudo tee /var/lib/enterprise-app/last-good-image",
+              "  echo Deployment successful",
+              "  exit 0",
+              "fi",
+              "echo New deployment failed. Starting rollback...",
+              "sudo docker rm -f enterprise-app || true",
               "if [ -n \"$PREVIOUS_IMAGE\" ]; then",
-              "  echo \"Restoring previous image: $PREVIOUS_IMAGE\"",
-              "  if docker run -d --name enterprise-app --restart unless-stopped -p 127.0.0.1:8000:8000 \"$PREVIOUS_IMAGE\"; then",
-              "    for i in $(seq 1 10); do",
-              "      if curl --fail --silent http://127.0.0.1/ > /dev/null; then",
-              "        echo 'Rollback successful. Previous version is running.'",
-              "        exit 1",
-              "      fi",
-              "      sleep 5",
-              "    done",
-              "    echo 'Previous Docker image also failed its health check.'",
+              "  echo Restoring previous image: $PREVIOUS_IMAGE",
+              "  sudo docker run -d --name enterprise-app --restart unless-stopped -p 127.0.0.1:8000:8000 $PREVIOUS_IMAGE",
+              "  sleep 5",
+              "  if curl --fail --silent http://127.0.0.1/; then",
+              "    echo Rollback successful. Previous version is running.",
+              "    exit 1",
               "  fi",
               "fi",
-              "echo 'Docker rollback unavailable or unsuccessful. Starting Gunicorn fallback...'",
-              "docker rm -f enterprise-app 2>/dev/null || true",
-              "systemctl start gunicorn",
+              "echo Rollback unavailable or failed. Starting Gunicorn fallback...",
+              "sudo systemctl start gunicorn || true",
               "exit 1"
-          ]
-
-          request = {
-              "InstanceIds": [instance_id],
-              "DocumentName": "AWS-RunShellScript",
-              "Comment": "Deploy enterprise application from GitHub Actions",
-              "Parameters": {
-                  "commands": commands
-              }
-          }
-
-          with open("ssm-request.json", "w") as file:
-              json.dump(request, file)
-          PY
-
-          COMMAND_ID=$(aws ssm send-command \
-            --cli-input-json file://ssm-request.json \
-            --query 'Command.CommandId' \
+            ]' \
+            --query "Command.CommandId" \
             --output text)
 
-          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
-          echo "SSM command submitted: $COMMAND_ID"
+          echo "SSM Command ID: $COMMAND_ID"
 
-      - name: Wait for deployment result
-        env:
-          COMMAND_ID: ${{ steps.send-command.outputs.command_id }}
-          INSTANCE_ID: i-095ce9e285493d318
-        run: |
-          for i in $(seq 1 40); do
-            STATUS=$(aws ssm get-command-invocation \
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "Status" \
+            --output text)
+
+          echo "Deployment status: $STATUS"
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "StandardOutputContent" \
+            --output text
+
+          if [ "$STATUS" != "Success" ]; then
+            aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'Status' \
-              --output text 2>/dev/null || true)
-
-            echo "Deployment status: $STATUS"
-
-            if [ "$STATUS" = "Success" ]; then
-              echo "Deployment completed successfully!"
-              exit 0
-            fi
-
-            if [[ "$STATUS" == "Failed" || "$STATUS" == "TimedOut" || "$STATUS" == "Cancelled" ]]; then
-              echo "Deployment failed. SSM output:"
-              aws ssm get-command-invocation \
-                --command-id "$COMMAND_ID" \
-                --instance-id "$INSTANCE_ID" \
-                --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}' \
-                --output json
-              exit 1
-            fi
-
-            sleep 5
-          done
-
-          echo "Timed out waiting for SSM deployment."
-          exit 1
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
