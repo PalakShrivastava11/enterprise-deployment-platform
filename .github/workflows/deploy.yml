@@ -26,7 +26,12 @@ jobs:
           docker build \
             -t palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }} \
             -t palaks11/enterprise-deployment-platform-repo:latest \
-            .
+
+            - name: Inspect pip embedded SBOM
+        run: |
+          IMAGE="palaks11/enterprise-deployment-platform-repo:${{ github.event.workflow_run.head_sha }}"
+          docker run --rm --entrypoint sh "$IMAGE" -c \
+            'grep -in -C 2 "setuptools" /usr/local/lib/python3.13/site-packages/pip/_vendor/bom.cdx.json || true'
 
       - name: Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
